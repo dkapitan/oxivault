@@ -1,0 +1,24 @@
+[skills.gh-stack]
+repo = "https://github.com/github/gh-stack"
+path = "skills/gh-stack"
+ref = "main"
+
+[skills.likec4-dsl]
+repo = "https://github.com/likec4/likec4"
+path = "skills/likec4-dsl"
+ref = "main"
+
+[skills.mcp-builder]
+repo = "https://github.com/anthropics/skills"
+path = "skills/mcp-builder"
+ref = "main"
+
+[skills.skill-creator]
+repo = "https://github.com/anthropics/skills"
+path = "skills/skill-creator"
+ref = "main"
+
+[skills.webapp-testing]
+repo = "https://github.com/anthropics/skills"
+path = "skills/webapp-testing"
+ref = "main"

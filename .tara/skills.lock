@@ -1,0 +1,32 @@
+{
+  "gh-stack": {
+    "commit": "2bd699a544a09cb5c45a013d03416e0894b0454e",
+    "path": "skills/gh-stack",
+    "ref": "main",
+    "repo": "https://github.com/github/gh-stack"
+  },
+  "likec4-dsl": {
+    "commit": "33dbc2d34c399a99daf96e92fc28fe5d280a7fd5",
+    "path": "skills/likec4-dsl",
+    "ref": "main",
+    "repo": "https://github.com/likec4/likec4"
+  },
+  "mcp-builder": {
+    "commit": "33375500bcea98d610eb30ce10ac4e59b89c390d",
+    "path": "skills/mcp-builder",
+    "ref": "main",
+    "repo": "https://github.com/anthropics/skills"
+  },
+  "skill-creator": {
+    "commit": "33375500bcea98d610eb30ce10ac4e59b89c390d",
+    "path": "skills/skill-creator",
+    "ref": "main",
+    "repo": "https://github.com/anthropics/skills"
+  },
+  "webapp-testing": {
+    "commit": "33375500bcea98d610eb30ce10ac4e59b89c390d",
+    "path": "skills/webapp-testing",
+    "ref": "main",
+    "repo": "https://github.com/anthropics/skills"
+  }
+}

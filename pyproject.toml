@@ -1,0 +1,17 @@
+[project]
+name = "oxivault"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Daniel Kapitan", email = "daniel@kapitan.net" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+oxivault = "oxivault:main"
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"
