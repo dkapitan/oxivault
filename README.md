@@ -1,81 +1,170 @@
-# oxivault
+# OxiVault
+
+[![PyPI](https://img.shields.io/pypi/v/oxivault)](https://pypi.org/project/oxivault/)
+[![Python](https://img.shields.io/pypi/pyversions/oxivault)](https://pypi.org/project/oxivault/)
 
 Vault-LD knowledge graph store on object storage.
 
-`oxivault` converts Obsidian-style Markdown vaults to and from RDF using the in-process Vault-LD reference algorithms and RDFLib.
-Maplib remains deferred.
-Not all RDF is representable in a vault; inspect conversion issues for reported losses.
+`oxivault` converts Obsidian-style Markdown vaults to and from RDF using in-process Vault-LD reference algorithms and RDFLib. It supports local files, in-memory stores, Git repositories, and S3-compatible object storage, with CLI, Python, and HTTP API interfaces.
+
+## Upstream specification and reference credit
+
+OxiVault builds on the original Vault-LD work from The Knowledge Graph Guys:
+
+- Specification: [Vault-LD SPEC.md](https://github.com/The-Knowledge-Graph-Guys/vault-ld/blob/025e71be8d810e387dc451c920e05472d1c47170/SPEC.md)
+- Reference implementation:
+  - [scripts/vault_to_rdf.py](https://github.com/The-Knowledge-Graph-Guys/vault-ld/blob/025e71be8d810e387dc451c920e05472d1c47170/scripts/vault_to_rdf.py)
+  - [scripts/rdf_to_vault.py](https://github.com/The-Knowledge-Graph-Guys/vault-ld/blob/025e71be8d810e387dc451c920e05472d1c47170/scripts/rdf_to_vault.py)
+
+This project adapts those reference conversion algorithms for in-process library use under `src/oxivault/_reference/vault_ld/`.
 
 ## Features
 
-- **ObjectStore Abstraction**: Backends for local directory (`LocalDirStore`), in-memory (`MemoryStore`), and upcoming S3/Git storage.
-- **Conversion**:
-  - `vault2rdf`: Export markdown vault notes and contexts to standard RDF Turtle documents (`schema.ttl`, `data.ttl`).
-  - `rdf2vault`: Ingest RDF graph triples into markdown notes with frontmatter, preserving body content and non-LD metadata.
-- **Derived Triples & SPARQL**:
-  - `Vault.triples()` returns a canonical Polars DataFrame (`subject`, `predicate`, `object`, `datatype`, `lang`, `note_path`, `layer`) with note provenance.
-  - `Vault.query()` provides SPARQL query capabilities across the vault.
-  - `Vault.neighbors()`, `Vault.backlinks()`, `Vault.search()`, and `Vault.search_body()` provide graph exploration and text search.
-  - `Vault.get_note()`, `Vault.put_note()`, `Vault.delete_note()`, and `Vault.list_notes()` provide note CRUD with optimistic concurrency and cache invalidation.
-- **CLI Commands**:
-  - `oxivault vault2rdf <VAULT_DIR> [--out-dir BUILD] [--source]`
-  - `oxivault rdf2vault <VAULT_DIR> <RDF_FILES>... [--nest]`
-  - `oxivault query <VAULT_DIR> "<SPARQL_QUERY>"`
+- **Vault ↔ RDF conversion**
+  - `vault2rdf`: export vault content to `schema.ttl` and `data.ttl`
+  - `rdf2vault`: ingest RDF into Markdown notes with frontmatter
+- **Graph access and querying**
+  - Canonical triples table via `Vault.triples()` (Polars DataFrame)
+  - SPARQL querying via `Vault.query()` and `oxivault query`
+  - Graph exploration via `neighbors()`, `backlinks()`, `search()`, `search_body()`
+- **Note CRUD with optimistic concurrency**
+  - `get_note()`, `put_note()`, `delete_note()`, `list_notes()`, `exists_note()`
+- **ObjectStore backends**
+  - `LocalDirStore`, `MemoryStore`, `S3Store`, `GitStore`
+- **Sync engine**
+  - Two-way sync between local vaults and S3-compatible storage (`oxivault sync`)
+- **HTTP API server (FastAPI)**
+  - Endpoints for notes, graph querying, search, and reindexing
 
-## CLI Usage
+## Requirements
+
+- Python **3.14+**
+- For S3 sync/backends: credentials configured for your AWS or S3-compatible provider (through boto3/client configuration)
+
+## Installation
+
+```bash
+pip install oxivault
+```
+
+With `uv`:
+
+```bash
+uv add oxivault
+```
+
+## CLI quick start
 
 Export a vault to RDF:
 
 ```bash
-uv run oxivault vault2rdf ./my-vault --out-dir ./dist --source
+oxivault vault2rdf ./my-vault --out-dir ./dist --source
 ```
 
 Ingest RDF into a vault:
 
 ```bash
-uv run oxivault rdf2vault ./my-vault ./graph.ttl
+oxivault rdf2vault ./my-vault ./graph.ttl
 ```
 
-Execute a SPARQL query against a vault:
+Run a SPARQL query:
 
 ```bash
-uv run oxivault query ./my-vault "SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10"
+oxivault query ./my-vault "SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10"
 ```
 
+Sync local vault with S3:
 
-Only `.ttl` (Turtle) and `.nt` (N-Triples) inputs are accepted.
-Errors produce a nonzero exit status with a CLI error message rather than an unhandled traceback.
+```bash
+oxivault sync ./my-vault --bucket my-s3-vault --direction both
+```
 
-## Python conversion contract
+Start the HTTP API server:
 
-`Vault.vault2rdf()` defaults to query-only output without placement metadata, matching the CLI.
-Use `Vault.vault2rdf(source=True)` or `--source` when note placement must survive re-ingest.
-`Vault.rdf2vault([])` is invalid; a supplied empty RDF document is valid and does not delete notes.
-Run `uv run python examples/roundtrip_demo.py` for body preservation and no-op regeneration.
+```bash
+oxivault serve ./my-vault --host 127.0.0.1 --port 8000
+```
+
+## Python quick start
 
 ```python
-from oxivault.config import VaultConfig
-from oxivault.store.local import LocalDirStore
+from oxivault.models import RdfDocument
+from oxivault.store.memory import MemoryStore
 from oxivault.vault import Vault
 
-vault = Vault(
-    LocalDirStore("./my-vault"),
-    VaultConfig(
-        max_read_bytes=10 << 20,
-        max_context_bytes=4 << 20,
-        max_snapshot_bytes=256 << 20,
-    ),
-)
-export = vault.vault2rdf(source=True)
+store = MemoryStore()
+vault = Vault(store)
+
+rdf = b"""@prefix ex: <https://example.org/> .
+@prefix data: <https://example.org/data/> .
+
+data:item1 a ex:Thing .
+"""
+
+vault.rdf2vault([RdfDocument(content=rdf, format="turtle")])
+
+triples = vault.triples()
+print(triples.select(["subject", "predicate", "object"]))
 ```
 
-These positive byte limits are the defaults even when no configuration is supplied.
-The context limit applies to local referenced documents regardless of filename, as well as generated contexts.
-Snapshot reads enforce the aggregate budget before allocating object content; staged output is checked again before publication.
-The temporary directory is not a disk quota during conversion.
+## HTTP API
 
-Ingest publishes only changed files, using captured ETags for updates and create-only preconditions for new paths.
-It rejects unsafe keys and staged symlinks, and keeps content hashes rather than a second copy of the vault in memory.
-Publication is not a multi-object transaction: `PublicationError.failed_path` and `PublicationError.applied_paths` identify partial progress, while `__cause__` preserves the underlying failure.
-LocalDir conditional writes serialize writers sharing the same store instance; they do not lock external editors or other processes.
-No claim of an atomic whole-vault snapshot is made.
+Run:
+
+```bash
+oxivault serve ./my-vault --port 8000
+```
+
+Then use:
+
+- `GET /vault`
+- `GET /notes`
+- `GET /notes/{path}`
+- `PUT /notes/{path}`
+- `DELETE /notes/{path}`
+- `POST /graph/sparql`
+- `GET /graph/edges?subject=...`
+- `GET /graph/issues`
+- `GET /search?q=...`
+- `POST /reindex`
+
+Interactive docs are available at `/docs`.
+
+## Conversion behavior and constraints
+
+- Not all RDF graphs are representable as vault notes. Check reported conversion issues when ingesting/exporting.
+- CLI RDF ingest accepts `.ttl` (Turtle) and `.nt` (N-Triples) files.
+- `Vault.vault2rdf()` and `oxivault vault2rdf` default to query-oriented export. Use `source=True` (Python) or `--source` (CLI) to include placement metadata for roundtrip location fidelity.
+- `Vault.rdf2vault([])` is invalid (empty sequence). Passing a non-empty sequence with an empty RDF document is valid.
+
+## Examples
+
+Runnable examples are in `examples/`:
+
+- `examples/local_store_demo.py`
+- `examples/roundtrip_demo.py`
+- `examples/graph_query_demo.py`
+- `examples/server_and_backends_demo.py`
+
+Run an example:
+
+```bash
+uv run python examples/roundtrip_demo.py
+```
+
+## Development
+
+```bash
+uv sync --group dev
+tara check
+```
+
+## License
+
+Licensed under the Apache License 2.0. See [LICENSE](LICENSE).
+
+## Project links
+
+- Source: https://github.com/dkapitan/oxivault
+- Issue tracker: https://github.com/dkapitan/oxivault/issues
+- Changelog: [CHANGELOG.md](CHANGELOG.md)

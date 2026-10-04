@@ -6,20 +6,54 @@ readme = "README.md"
 authors = [
     { name = "Daniel Kapitan", email = "daniel@kapitan.net" }
 ]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = [
+    "vault-ld",
+    "knowledge-graph",
+    "rdf",
+    "sparql",
+    "obsidian",
+    "markdown",
+    "s3",
+    "fastapi",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
 requires-python = ">=3.14"
 dependencies = [
+    "boto3>=1.35.0",
     "click>=8.5.0",
+    "dulwich>=0.22.0",
+    "fastapi>=0.115.0",
     "polars>=1.44.2",
     "pydantic>=2.10.0",
     "pyyaml>=6.0.2",
     "rdflib>=7.1.0",
+    "uvicorn>=0.34.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/dkapitan/oxivault"
+Repository = "https://github.com/dkapitan/oxivault"
+Issues = "https://github.com/dkapitan/oxivault/issues"
+Changelog = "https://github.com/dkapitan/oxivault/blob/main/CHANGELOG.md"
 
 [project.scripts]
 oxivault = "oxivault:main"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.0",
+    "moto[s3]>=5.0.0",
     "pre-commit>=4.0.0",
     "pytest>=8.3.0",
     "ruff>=0.9.0",
@@ -94,7 +128,10 @@ docstring-code-format = true
 [tool.pytest.ini_options]
 addopts = ["-ra", "-q", "--strict-config", "--strict-markers", "--import-mode=importlib"]
 xfail_strict = true
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+]
 testpaths = ["tests"]
 
 [tool.ty.rules]

@@ -7,10 +7,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import click
+import uvicorn
 
 from oxivault.errors import OxiVaultError
 from oxivault.models import RdfDocument
+from oxivault.server import create_app
 from oxivault.store.local import LocalDirStore
+from oxivault.store.s3 import S3Store
+from oxivault.sync import SyncEngine
 from oxivault.vault import Vault
 
 if TYPE_CHECKING:
@@ -85,6 +89,30 @@ def rdf2vault_cmd(vault: Path, rdf_files: tuple[Path, ...], nest: bool) -> None:
         click.echo(f"[{issue.severity.upper()}] {issue.message}", err=True)
 
 
+@cli.command("sync")
+@click.argument("vault", type=click.Path(file_okay=False, dir_okay=True, path_type=Path))
+@click.option("--bucket", required=True, help="S3 bucket name.")
+@click.option("--prefix", default="", help="S3 key prefix.")
+@click.option("--direction", type=click.Choice(["pull", "push", "both"]), default="both", help="Sync direction.")
+@click.option("--endpoint-url", default=None, help="Custom S3 endpoint URL (MinIO/R2).")
+def sync_cmd(vault: Path, bucket: str, prefix: str, direction: str, endpoint_url: str | None) -> None:
+    """Synchronize a local Obsidian vault with an S3 object store."""
+    with _cli_errors():
+        local = LocalDirStore(root_dir=vault)
+        remote = S3Store(bucket=bucket, prefix=prefix, endpoint_url=endpoint_url)
+        engine = SyncEngine(local=local, remote=remote)
+
+        if direction in ("pull", "both"):
+            pull_res = engine.pull()
+            click.echo(f"Pulled {len(pull_res.downloaded)} files from S3.")
+
+        if direction in ("push", "both"):
+            push_res = engine.push()
+            click.echo(f"Pushed {len(push_res.uploaded)} files to S3.")
+            if push_res.conflicts:
+                click.echo(f"Conflicts detected on {len(push_res.conflicts)} files: {push_res.conflicts}", err=True)
+
+
 @cli.command("query")
 @click.argument("vault", type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path))
 @click.argument("sparql", type=str)
@@ -96,3 +124,16 @@ def query_cmd(vault: Path, sparql: str) -> None:
         results = v.query(sparql)
         for row in results:
             click.echo(row)
+
+
+@cli.command("serve")
+@click.argument("vault", type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path))
+@click.option("--host", default="127.0.0.1", help="Host interface to bind to.")
+@click.option("--port", default=8000, type=int, help="Port to listen on.")
+def serve_cmd(vault: Path, host: str, port: int) -> None:
+    """Run the OxiVault HTTP API server for a local vault."""
+    with _cli_errors():
+        store = LocalDirStore(root_dir=vault)
+        v = Vault(store=store)
+        app = create_app(v)
+        uvicorn.run(app, host=host, port=port)

@@ -8,11 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- S3 storage backend (`S3Store`) with boto3, supporting conditional writes (`IfMatch`, `IfNoneMatch`) and pagination.
+- Obsidian sync engine (`SyncEngine`, `oxivault sync`) with state manifest (`.oxivault/state.json`) and conflict preservation (`.conflict.md`).
+- Git storage backend (`GitStore`) using dulwich in bare and working-tree modes with commit history.
+- FastAPI REST API server (`create_app(vault)`, `oxivault serve`) exposing `/vault`, `/notes`, `/graph/sparql`, `/graph/edges`, `/search`, and `/reindex`.
 - Note CRUD operations on `Vault` facade (`get_note`, `put_note`, `delete_note`, `list_notes`, `exists_note`) with frontmatter validation and optimistic concurrency support.
 - Graph query and navigation operations on `Vault` facade (`neighbors`, `backlinks`, `search`, `search_body`, `issues`).
 - Store change detection and fingerprint-based cache invalidation for derived graph and triples DataFrame.
 - CLI `query` command for running SPARQL queries directly against a local vault.
-- Runnable `graph_query_demo.py` example demonstrating graph queries and note CRUD.
+- Runnable examples `graph_query_demo.py` and `server_and_backends_demo.py`.
 - Configurable aggregate snapshot limit, defaulting to 256 MiB.
 - Partial-publication errors identifying the failed path and already-applied paths.
 
