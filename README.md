@@ -1,7 +1,7 @@
 # OxiVault
 
-[![PyPI](https://img.shields.io/pypi/v/oxivault)](https://pypi.org/project/oxivault/)
-[![Python](https://img.shields.io/pypi/pyversions/oxivault)](https://pypi.org/project/oxivault/)
+[![PyPI](https://img.shields.io/pypi/v/oxivault?cacheSeconds=300)](https://pypi.org/project/oxivault/)
+[![Python](https://img.shields.io/pypi/pyversions/oxivault?cacheSeconds=300)](https://pypi.org/project/oxivault/)
 
 Vault-LD knowledge graph store on object storage.
 
