@@ -159,6 +159,19 @@ uv sync --group dev
 tara check
 ```
 
+## Release and PyPI publishing
+
+Publishing is automated with GitHub tags through `.github/workflows/publish.yml`.
+Create and push an annotated SemVer tag to publish, for example:
+
+```bash
+git tag -a v0.1.0 -m "Release 0.1.0"
+git push origin v0.1.0
+```
+
+The publish workflow builds source and wheel distributions and uploads them to PyPI with GitHub OIDC trusted publishing.
+Configure a PyPI trusted publisher for `dkapitan/oxivault` that points to workflow `publish.yml` and environment `pypi`.
+
 ## License
 
 Licensed under the Apache License 2.0. See [LICENSE](LICENSE).
