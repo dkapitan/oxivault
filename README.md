@@ -130,6 +130,45 @@ Then use:
 
 Interactive docs are available at `/docs`.
 
+### API auth, CORS, presigned URLs, and publication helper
+
+The FastAPI app now supports OAuth2 bearer tokens and session-cookie authentication with two roles.
+Use `read` for audience and published-content access and `editor` for librarian write operations.
+Read-only SPARQL filtering remains in place as defense-in-depth behind authentication and authorization.
+CORS uses an explicit allow-list of front-end origins.
+Presigned URLs support browser-direct uploads and temporary private downloads.
+The publication helper updates note publication metadata and can optionally perform verified copy-based publication to a public bucket or prefix.
+Authentication is opt-in for backward compatibility, so set `auth_enabled=True` in `ApiServerConfig` to enforce auth.
+
+Example app wiring:
+
+```python
+from oxivault.server import ApiServerConfig, create_app
+
+app = create_app(
+    vault,
+    config=ApiServerConfig(
+        auth_enabled=True,
+        read_tokens={"read-token"},
+        editor_tokens={"editor-token"},
+        users={
+            "audience": {"password": "audience-password", "role": "read"},
+            "librarian": {"password": "librarian-password", "role": "editor"},
+        },
+        cors_allowed_origins=["https://app.nalandabodhi.org"],
+    ),
+)
+```
+
+Additional endpoints:
+
+- `POST /auth/token`
+- `POST /auth/session/login`
+- `POST /auth/session/logout`
+- `POST /objects/presign-put`
+- `POST /objects/presign-get`
+- `POST /publication/notes/{path}`
+
 ## Conversion behavior and constraints
 
 - Not all RDF graphs are representable as vault notes. Check reported conversion issues when ingesting/exporting.

@@ -210,3 +210,55 @@ class S3Store:
             return False
         else:
             return True
+
+    def presign_put(self, key: str, *, expires_seconds: int) -> str:
+        """Generate a presigned PUT URL for direct browser uploads."""
+        s3_key = self._s3_key(key)
+        if expires_seconds <= 0:
+            raise ValueError("expires_seconds must be > 0")
+        return self._client.generate_presigned_url(
+            "put_object",
+            Params={"Bucket": self.bucket, "Key": s3_key},
+            ExpiresIn=expires_seconds,
+        )
+
+    def presign_get(self, key: str, *, expires_seconds: int) -> str:
+        """Generate a presigned GET URL for temporary private downloads."""
+        s3_key = self._s3_key(key)
+        if expires_seconds <= 0:
+            raise ValueError("expires_seconds must be > 0")
+        return self._client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": s3_key},
+            ExpiresIn=expires_seconds,
+        )
+
+    def copy_verified(
+        self,
+        source_key: str,
+        target_key: str,
+        *,
+        expected_etag: str,
+        target_bucket: str | None = None,
+    ) -> str:
+        """Copy object only if source ETag still matches."""
+        src = self._s3_key(source_key)
+        dst = self._s3_key(target_key)
+        bucket = target_bucket or self.bucket
+        clean_etag = expected_etag.strip('"')
+        try:
+            resp = self._client.copy_object(
+                Bucket=bucket,
+                Key=dst,
+                CopySource={"Bucket": self.bucket, "Key": src},
+                CopySourceIfMatch=clean_etag,
+            )
+        except ClientError as err:
+            code = err.response.get("Error", {}).get("Code")
+            if code in ("PreconditionFailed", "412"):
+                raise ObjectConflictError(source_key, "Source object changed before copy") from err
+            if code in ("NoSuchKey", "404"):
+                raise ObjectNotFoundError(source_key) from err
+            raise StoreError(f"Failed to copy S3 object {source_key} -> {target_key}: {err}") from err
+        else:
+            return resp["CopyObjectResult"]["ETag"].strip('"')

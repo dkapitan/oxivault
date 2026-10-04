@@ -16,6 +16,7 @@ from oxivault.errors import (
     ObjectConflictError,
     ObjectNotFoundError,
     ObjectReadLimitError,
+    StoreError,
 )
 from oxivault.store.base import _SENTINEL, StatInfo, validate_key
 
@@ -303,3 +304,13 @@ class GitStore:
                 if disk_path.exists():
                     disk_path.unlink()
                 build_index_from_tree(str(self.path), self.repo.index_path(), self.repo.object_store, commit.tree)
+
+    def presign_put(self, key: str, *, expires_seconds: int) -> str:
+        """Git backend does not support presigned URLs."""
+        _ = (key, expires_seconds)
+        raise StoreError("Presigned URLs are not supported by GitStore")
+
+    def presign_get(self, key: str, *, expires_seconds: int) -> str:
+        """Git backend does not support presigned URLs."""
+        _ = (key, expires_seconds)
+        raise StoreError("Presigned URLs are not supported by GitStore")

@@ -232,6 +232,26 @@ class Vault:
         self.store.delete(clean_key)
         self.invalidate()
 
+    def set_note_publication(
+        self,
+        path: str,
+        *,
+        published: bool,
+        visibility: Literal["public", "private"],
+        expected_etag: str | object | None = _SENTINEL,
+    ) -> Note:
+        """Update publication metadata in note frontmatter."""
+        note = self.get_note(path)
+        frontmatter = dict(note.frontmatter)
+        current_publication = frontmatter.get("publication")
+        publication: dict[str, object] = {}
+        if isinstance(current_publication, dict):
+            publication.update(current_publication)
+        publication["published"] = published
+        publication["visibility"] = visibility
+        frontmatter["publication"] = publication
+        return self.put_note(path, frontmatter=frontmatter, body=note.body, expected_etag=expected_etag)
+
     def vault2rdf(self, *, source: bool = False) -> RdfExport:
         """Export the vault to RDF split into schema and data Turtle strings."""
         with self._snapshot() as tmp_vault:

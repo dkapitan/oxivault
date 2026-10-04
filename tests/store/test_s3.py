@@ -109,3 +109,15 @@ data:hummus a cul:Recipe ; rdfs:label "Hummus" .
 
     export = vault.vault2rdf(source=True)
     assert "Hummus" in export.data_ttl
+
+
+def test_s3_store_presign_put_and_get(s3_bucket: str) -> None:
+    store = S3Store(bucket=s3_bucket, prefix="myvault/")
+
+    put_url = store.presign_put("masters/video.mp4", expires_seconds=300)
+    get_url = store.presign_get("masters/video.mp4", expires_seconds=300)
+
+    assert ("X-Amz-Expires=300" in put_url) or ("Expires=" in put_url)
+    assert ("X-Amz-Expires=300" in get_url) or ("Expires=" in get_url)
+    assert "/myvault/masters/video.mp4" in put_url
+    assert "/myvault/masters/video.mp4" in get_url

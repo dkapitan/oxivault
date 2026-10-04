@@ -101,3 +101,11 @@ class ObjectStore(Protocol):
     def exists(self, key: str) -> bool:
         """Check if object exists."""
         ...
+
+    def presign_put(self, key: str, *, expires_seconds: int) -> str:
+        """Return a presigned URL for uploading an object."""
+        ...
+
+    def presign_get(self, key: str, *, expires_seconds: int) -> str:
+        """Return a presigned URL for downloading an object."""
+        ...

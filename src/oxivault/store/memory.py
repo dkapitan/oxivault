@@ -99,3 +99,17 @@ class MemoryStore:
         """Check if object exists."""
         clean_key = validate_key(key)
         return clean_key in self._entries
+
+    def presign_put(self, key: str, *, expires_seconds: int) -> str:
+        """Return a deterministic in-memory upload URL for tests."""
+        clean_key = validate_key(key)
+        if expires_seconds <= 0:
+            raise ValueError("expires_seconds must be > 0")
+        return f"memory://presigned-put/{clean_key}?expires={expires_seconds}"
+
+    def presign_get(self, key: str, *, expires_seconds: int) -> str:
+        """Return a deterministic in-memory download URL for tests."""
+        clean_key = validate_key(key)
+        if expires_seconds <= 0:
+            raise ValueError("expires_seconds must be > 0")
+        return f"memory://presigned-get/{clean_key}?expires={expires_seconds}"

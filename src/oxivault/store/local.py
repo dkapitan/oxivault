@@ -13,6 +13,7 @@ from oxivault.errors import (
     ObjectConflictError,
     ObjectNotFoundError,
     ObjectReadLimitError,
+    StoreError,
     StoreKeyError,
 )
 from oxivault.store.base import _SENTINEL, StatInfo, validate_key
@@ -135,3 +136,13 @@ class LocalDirStore:
         """Check if object exists."""
         target = self._resolve_path(key)
         return target.is_file() and not target.is_symlink()
+
+    def presign_put(self, key: str, *, expires_seconds: int) -> str:
+        """Local filesystem backend does not support presigned URLs."""
+        _ = (key, expires_seconds)
+        raise StoreError("Presigned URLs are not supported by LocalDirStore")
+
+    def presign_get(self, key: str, *, expires_seconds: int) -> str:
+        """Local filesystem backend does not support presigned URLs."""
+        _ = (key, expires_seconds)
+        raise StoreError("Presigned URLs are not supported by LocalDirStore")

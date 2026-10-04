@@ -4,6 +4,7 @@ Freeform session notes and handover scratch. One row per doc, newest first. Name
 
 | Date | File | Summary |
 | ---- | ---- | ------- |
+| 2026-10-04 | [202610041115_auth-cors-presign-publication-adr.md](202610041115_auth-cors-presign-publication-adr.md) | Added OAuth2/session role auth, CORS allow-list, presign endpoints, publication helper with optional verified copy, and ADR-0001 design, validated with `tara check`. |
 | 2026-10-04 | [202610041740_readme-vaultld-attribution.md](202610041740_readme-vaultld-attribution.md) | Added README attribution section with links and credit to upstream Vault-LD spec and reference scripts at the pinned revision. |
 | 2026-10-04 | [202610041730_readme-license-section.md](202610041730_readme-license-section.md) | Added README `License` section linking to Apache-2.0 `LICENSE`; validated with `tara check`. |
 | 2026-10-04 | [202610041725_apache-license-and-metadata.md](202610041725_apache-license-and-metadata.md) | Added Apache-2.0 `LICENSE`, updated `pyproject.toml` license metadata to SPDX/PEP 639 fields, and validated with build + twine check + `tara check`. |

@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- API authentication with OAuth2 bearer token flow and session-cookie login, with `read` and `editor` roles.
+- CORS allow-list configuration for front-end origins via `ApiServerConfig.cors_allowed_origins`.
+- Presigned URL operations on object stores (`presign_put`, `presign_get`) with S3-compatible implementation in `S3Store`.
+- API endpoints for presigned upload and download URL issuance (`/objects/presign-put`, `/objects/presign-get`).
+- Publication helper endpoint (`/publication/notes/{path}`) that updates publication metadata and supports optional verified copy-based publication for compatible backends.
+- ADR `docs/decisions/0001-publication-helper-for-master-library.md` documenting the publication helper design and rollout.
+
+### Fixed
+
+- Restored backward-compatible default server behavior by keeping auth disabled unless explicitly enabled in `ApiServerConfig`.
+- Publication helper now avoids persisting publication metadata before copy-mode validation and copy execution succeed.
+- Publication helper now maps missing/invalid source object errors to explicit 4xx responses instead of uncaught server errors.
+- Session logout now revokes the current in-memory session token in addition to clearing the cookie.
+
 ## [0.1.0] - 2026-10-04
 
 ### Added
