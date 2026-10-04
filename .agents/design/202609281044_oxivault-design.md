@@ -1,6 +1,18 @@
-# oxivault: a Vault-LD knowledge graph store on object storage with maplib
+# oxivault: a Vault-LD knowledge graph store on object storage
 
-Status: proposed design (investigation phase). Date: 2026-09-28.
+Status: proposed design with a reference-first implementation plan.
+Date: 2026-09-28; updated 2026-10-02.
+
+## Implementation baseline update: 2026-10-02
+
+The [reference-first TDD plan](../plan/202610020723_reference-first-tdd-implementation.md) is the current implementation sequence.
+Use the pinned Vault-LD reference algorithms, adapted into in-process functions, with RDFLib as the initial RDF engine.
+The public conversion methods and CLI commands are `vault2rdf` and `rdf2vault`.
+Initially accept Turtle and N-Triples input; other RDF formats await network-free in-process parsing.
+The upstream process-wide network blocker must not be imported into the host application's behavior.
+Retain ObjectStore, Polars, sync, and the API design; defer maplib and its load/cache optimizations.
+The maplib investigation below records future-backend evidence, not an initial dependency or performance guarantee.
+The proposed design remains subject to the decision gates listed in the implementation plan.
 
 ## 1. Purpose
 
@@ -10,8 +22,8 @@ changes over the reference implementation:
 1. The vault's physical location is any S3-compliant object store (AWS S3,
    MinIO, Cloudflare R2, Backblaze B2, Garage) or a git repository, not
    just a local directory.
-2. The RDF engine is maplib (Rust, Arrow/Polars, Oxigraph-derived SPARQL)
-   instead of rdflib, for performance.
+2. The RDF engine can later be replaced with maplib (Rust, Arrow/Polars, Oxigraph-derived SPARQL) behind stable conversion and graph interfaces.
+   The initial implementation uses the reference's RDFLib engine to establish correctness before optimizing.
 
 The product is a knowledge graph store consumed by two very different
 frontends:
@@ -55,7 +67,7 @@ links are the edges; export and ingest are inverse roundtrip faces.
 - **Licence**: Apache-2.0. Porting logic with attribution is compatible;
   oxivault should be Apache-2.0 too.
 
-### 2.2 maplib (DataTreehouse/maplib, 0.20.26) — verified by spike on Python 3.14
+### 2.2 Deferred maplib backend (DataTreehouse/maplib, 0.20.26) — verified by spike on Python 3.14
 
 - Rust core, Apache Arrow, Polars DataFrames (zero-copy results), SPARQL via
   Oxigraph-derived engine. In-memory; the docs claim ~100M triples on 32 GB.
@@ -85,10 +97,9 @@ links are the edges; export and ingest are inverse roundtrip faces.
     Treehouse to enable full text search"). oxivault v1 must not depend on
     any of them. Text search is done ourselves (Polars string search over
     literals + note bodies).
-  - maplib depends on `rdflib>=7.6` (transitive; used internally for some
-    serialization formats) and `fastapi` (which we reuse for the API
-    server). oxivault code never touches rdflib directly; maplib replaces
-    it for parsing, storage, query, and serialization.
+  - maplib depends on `rdflib>=7.6` and `fastapi`.
+    This does not supply the initial implementation's dependencies: declare RDFLib directly for reference conversion/query and FastAPI explicitly for the server.
+    Keep engine-specific objects out of the public API so a later maplib implementation remains contained.
   - maplib is young (0.20.x). The struct-column layout for mixed objects is
     internal and could change; pin the maplib version and keep the primary
     load path independent of that layout (see 4.4).
@@ -113,13 +124,14 @@ links are the edges; export and ingest are inverse roundtrip faces.
                     │        ▼                                     │
                     │  triple DataFrame (Polars, canonical form)   │
                     │        │                                     │
-                    │        ├──► maplib Model ──► SPARQL          │
+                    │        ├──► RDFLib Graph ──► SPARQL         │
                     │        └──► DataFrame queries (neighbors,    │
                     │             backlinks, search, validation)   │
                     └───────┬──────────────────────────┬──────────┘
                             │                          │
                     CLI (sync,      FastAPI server (JSON API
-                    export, import,  for the SvelteKit app)
+                    vault2rdf,       for the SvelteKit app)
+                    rdf2vault,
                     query, serve)
                             │                          │
                     Obsidian (local dir)      SvelteKit web app
@@ -130,6 +142,8 @@ directory, an S3-compliant bucket, or a git repository. Notes and
 `context.jsonld` are objects keyed by their vault-relative POSIX paths. There
 are no directories in S3 (only key prefixes) and none in git (only trees);
 the store abstraction hides both.
+Initially the in-process reference functions operate on a bounded temporary snapshot of the store; successful ingest publishes only changed objects with conditional-write checks.
+The RDFLib graph shown above can be replaced by maplib in a later increment.
 
 ## 4. Design decisions
 
@@ -170,36 +184,43 @@ optional per backend: S3 via `If-Match`, git via blob-hash comparison,
 LocalDir via mtime+size, Memory trivially. This keeps every consumer (sync,
 API, roundtrip) written once against the contract, with backend-specific
 behaviour confined to the implementations.
+The implementation contract must also specify bounded reads and create-only preconditions.
+A caller requiring conditional publication must receive an explicit error when the backend cannot provide it, not a last-write-wins fallback.
+LocalDir's conditional-write guarantee needs serialized check-and-replace within its supported writer scope; mtime and size alone are not an atomic concurrency mechanism.
+Multiple object writes are not a vault-wide transaction unless a backend advertises an atomic batch capability.
 
 ### 4.2 The triple DataFrame is the canonical derived form
 
 After parsing notes, the intermediate is a Polars DataFrame:
-`subject, predicate, object, datatype, lang, note_path, layer`. It is the
-source of truth for everything oxivault does itself (neighbors, backlinks,
-dangling-link and validation reports, search) and the input to the maplib
-Model. This aligns with the project rule to prefer Polars and keeps maplib
-as one query engine among two, not the only representation.
+`subject, predicate, object, datatype, lang, note_path, layer`.
+It is the canonical derived representation for graph browsing and search, alongside the reference conversion's explicit diagnostics.
+The vault remains the durable source; initially the reference exporter supplies RDFLib graphs and note provenance from which this table is built.
+The query graph is built from the table with RDFLib initially and maplib later.
+Capture `note_path` and `layer` during reference triple emission, not by reconstructing paths from subject IRIs or optional placement triples.
+Normalize plain literals to `xsd:string` so they remain distinguishable from IRI objects.
+This aligns with the project rule to prefer Polars without requiring a rewrite of the reference mapping logic.
 
 Why two engines: the web app's bread-and-butter queries (node view, graph
 edges, type browse, backlinks) are Polars filters over the DataFrame, no
-SPARQL involved. Full SPARQL (arbitrary path queries, construct) goes through
-the maplib Model. Keeping the DataFrame primary also gives us a clean
-incremental-update story given maplib's lack of triple deletion.
+SPARQL involved.
+SPARQL SELECT and CONSTRUCT go through the RDFLib graph initially, subject to the API's query-safety boundary.
+Keeping the DataFrame primary also provides a stable boundary for the future maplib backend.
 
-### 4.3 Incremental updates: note-level triple cache, Model rebuilt
+### 4.3 Initial full refresh; deferred note-level cache
 
-maplib cannot delete individual triples. oxivault therefore caches the
-triples of each note (DataFrame keyed by `note_path`), and:
+Initially any note/context mutation invalidates the derived snapshot.
+Before reusing it, compare store metadata to detect out-of-band note/context edits, additions, and removals.
+The next graph read rebuilds through the reference exporter and publishes the table and query graph together.
+Failed publication or refresh cannot leave the application serving stale data as a successful current result.
+Whole-snapshot rebuilding avoids incorrect local invalidation when context definitions, duplicate names, or wiki-link targets change.
 
-- a note change re-parses one note, recomputes its triples, and updates the
-  DataFrame by subject (set-based);
-- the maplib Model is rebuilt from the DataFrame when a SPARQL query runs
-  after changes (a full rebuild of 45k triples took 0.06 s in the spike),
-  or lazily invalidated by a dirty flag.
+For a later maplib implementation, its lack of triple-level deletion motivates a per-note triple cache and a rebuilt Model.
+Introduce that optimization only after profiling and tests for dependency-aware invalidation, not as a prerequisite to reference reuse.
 
-This keeps the graph correct without depending on maplib mutation APIs.
+### 4.4 Deferred maplib loading: N-Triples as the primary path
 
-### 4.4 Loading triples into maplib: N-Triples as the primary path
+This section is future-backend work.
+The initial implementation uses RDFLib's existing serializers and does not add a custom N-Triples serializer.
 
 Two verified options:
 
@@ -221,11 +242,10 @@ Obsidian edits a local directory. The object store is the physical vault.
 - `pull`: materialize the store into a local working copy (idempotent).
 - `push`: upload locally changed notes; detect changes by comparing ETags
   against a local manifest (`.oxivault/state.json` in the working copy).
-- Conflicts: writes use conditional `If-Match`; a store-side conflict
-  surfaces as a 409, and the CLI saves the incoming version as
-  `<name>.conflict.md` rather than destroying either side (last-write-wins
-  plus a recoverable copy). Note-level granularity only; vault files are
-  independent, so this is safe.
+- Conflicts: writes use conditional `If-Match`; a store-side conflict surfaces as a 409 through the API.
+  The CLI preserves both versions using a recoverable `<name>.conflict.md` copy rather than silently retrying without the precondition.
+  Decide copy placement and deletion propagation before implementing sync.
+  Conflict handling is note-level; it is not a vault-wide transaction.
 - S3 (AWS since Dec 2020, MinIO, R2) is strongly consistent; no
   read-after-write staleness to work around.
 - Alternative for users who prefer it: Obsidian's Remotely Save plugin syncs
@@ -240,8 +260,8 @@ Obsidian edits a local directory. The object store is the physical vault.
 
 ### 4.6 API server for the SvelteKit app
 
-FastAPI (already a maplib dependency) with versioned JSON endpoints (section
-6). The SvelteKit app calls the API server-side (keeping secrets and
+FastAPI, declared as a direct server dependency, with versioned JSON endpoints (section 6).
+The SvelteKit app calls the API server-side (keeping secrets and
 credentials out of the browser); CORS is configured for the app's origin.
 SPARQL passthrough gives the app full graph power; structured endpoints cover
 the common cases without SPARQL.
@@ -265,6 +285,9 @@ body search needs to scale later, add Tantivy or SQLite FTS behind the same
   S3 (no absolute keys, no `..` segments, no backslashes).
 - `sanitize_stem`-style neutralisation of untrusted foreign IRIs on ingest.
 - S3 credentials from environment/roles only, never from the vault.
+- In-process conversion accepts local Turtle/N-Triples bytes through an explicit parser allowlist.
+  Do not mutate global network handlers, arguments, or console state to contain an individual conversion.
+  Other RDF input formats are deferred.
 
 ### 4.9 Git repository as a storage backend
 
@@ -323,22 +346,25 @@ writes) and pygit2 (fastest but a native libgit2 dependency). Pin dulwich.
 ```
 src/oxivault/
   store/            ObjectStore protocol; Local, S3, Git, Memory implementations
-  context.py        composed @context resolution (port of reference logic)
-  frontmatter.py    bounded YAML-LD frontmatter parse (port)
-  identity.py       name minting, wiki-link resolution, vld:path (port)
-  triples.py        canonical triple model + N-Triples serializer
-  graph.py          VaultGraph: triple DataFrame + maplib Model, refresh
-  roundtrip.py      export to Turtle, ingest from RDF (maplib reads)
-  vault.py          Vault facade: notes, snapshot, change detection, sync
+  _reference/       attributed Vault-LD code adapted into in-process functions
+  triples.py        canonical triple model + RDFLib/table conversion
+  graph.py          VaultGraph: triple DataFrame + RDFLib Graph, refresh
+  roundtrip.py      snapshot bridge, conversion results, conditional publication
+  vault.py          Vault facade: vault2rdf, rdf2vault, notes, refresh, sync
   server.py         FastAPI app (v1 endpoints)
-  cli.py            oxivault CLI (init, sync, export, import, query, serve)
+  cli.py            oxivault CLI (init, sync, vault2rdf, rdf2vault, query, serve)
   config.py         Pydantic BaseSettings (store URI, creds, limits)
+  errors.py         package-specific fatal errors and conflict reporting
 ```
 
-Ports stay close to the reference logic (context merge, minting, link
-resolution, placement, fidelity rules) but emit/consume the triple DataFrame
-instead of an rdflib Graph. Conformance criteria from SPEC section 6 become
-tests, run against the reference example vault.
+Keep the reference's context, frontmatter, identity, and placement helpers together initially rather than extracting new modules before behavior is covered.
+The adapted reference functions use RDFLib internally; public conversion results contain serialized RDF documents and typed reports.
+Conformance criteria from SPEC section 6 become independent tests, supplemented by comparisons with an untouched pinned reference and its example vault.
+
+The public methods are `Vault.vault2rdf(*, source=False)` and `Vault.rdf2vault(rdf, *, nest=False)`.
+The first returns schema/data Turtle documents and diagnostics; the second accepts explicitly typed Turtle/N-Triples documents and reports note/context changes and diagnostics.
+`source=True` opts into placement-preserving export, matching the reference's `--source` behavior.
+See the implementation plan for target models and detailed failure contracts.
 
 ## 6. API surface (v1)
 
@@ -353,31 +379,37 @@ tests, run against the reference example vault.
   history for a note; exposed via an optional `VersionedStore` extension of
   the protocol, so a backend without versioning (S3 without object
   versioning) simply does not advertise it.
-- `POST /graph/sparql` — SPARQL SELECT/CONSTRUCT passthrough, JSON result.
+- `POST /graph/sparql` — SPARQL SELECT/CONSTRUCT with JSON results and an explicit network-free, read-only execution boundary.
+  Agree CONSTRUCT's JSON representation before implementing the endpoint.
 - `GET  /graph/edges?subject=` — outbound and inbound edges (DataFrame path).
 - `GET  /search?q=` — literal and body search.
 - `GET  /graph/issues` — dangling links, unmapped fields, ambiguity warnings,
   schema-folder type mismatches (the reference tool's warning surface,
   exposed as an API).
-- `POST /reindex` — rebuild the triple DataFrame and maplib Model.
+- `POST /reindex` — rebuild the triple DataFrame and initial RDFLib query graph.
 
 ## 7. Dependencies to add
 
-maplib (pinned, e.g. `==0.20.26`), polars, boto3, dulwich (pinned, e.g.
-`==1.2.15`), fastapi (transitive via maplib; declare explicitly for the
-server), uvicorn, pydantic-settings. Dev: pytest, ruff, ty, moto (offline
-S3 tests). PyYAML stays (frontmatter parsing). rdflib is not a direct
-dependency.
+Add dependencies when their implementation increment first needs them.
+Initially use direct RDFLib and PyYAML dependencies, starting from the pinned reference requirements (`rdflib==7.6.0`, `PyYAML==6.0.3`) and reviewing them before installation.
+Add polars, boto3, pinned dulwich, explicit fastapi/uvicorn server dependencies, and pydantic-settings at their respective increments.
+Dev dependencies include pytest, ruff, ty, pre-commit, and moto for offline S3 tests.
+Do not add maplib until its deferred implementation is approved.
 
 ## 8. Risks
 
-- **maplib is young and partially commercial.** Pin the version; keep the
+- **Future maplib is young and partially commercial.** Pin the version; keep the
   load path off its internal layouts; never rely on SHACL/Datalog/FTS.
-- **maplib is in-memory.** Vault-scale is fine; a pathological multi-million-
+- **Future maplib is in-memory.** Vault-scale is fine; a pathological multi-million-
   note vault would need a different engine. Not a v1 concern.
-- **Porting subtlety.** Context composition and minting edge cases are easy
-  to get subtly wrong. Mitigation: differential tests against the reference
-  scripts on the example vault, plus roundtrip-fidelity tests.
+- **Reference adaptation subtlety.** Context composition and minting edge cases are easy to change accidentally.
+  Mitigation: independent SPEC assertions, differential tests against the pinned reference, and roundtrip-fidelity tests.
+- **Reference runtime behavior.** The scripts use CLI exits, printed diagnostics, and a process-wide network blocker.
+  Adapt these into typed in-process boundaries; do not copy them into the API host unchanged.
+- **Reference performance and snapshot costs.** Full conversion includes temporary storage and Python parsing.
+  Measure it separately; the maplib graph-loading spike did not measure this path.
+- **Multi-object publication.** S3/LocalDir can partially apply a successful conversion before an I/O failure.
+  Surface the applied paths and invalidate the graph; only an advertised batch capability supplies vault-wide atomicity.
 - **Sync conflicts.** Mitigated by conditional writes and conflict copies.
 - **Git backend concurrency.** Writes move HEAD; mitigated by compare-and-swap
   ref updates plus a per-repo write lock; git-backed deployments prefer a
@@ -414,9 +446,9 @@ dependency.
 ## 10. Proposed ADRs (record once the design is confirmed)
 
 1. Object storage abstraction: own `ObjectStore` protocol over fsspec.
-2. maplib as the graph engine; triple DataFrame as canonical derived form.
-3. N-Triples as the primary maplib load path; struct path version-pinned.
-4. Rebuild-not-patch update strategy (maplib has no triple deletion).
+2. In-process Vault-LD reference reuse with RDFLib initially, a canonical derived triple DataFrame, and stable `vault2rdf`/`rdf2vault` interfaces.
+3. Deferred maplib implementation and its supported load path; struct optimization only after profiling.
+4. Whole-snapshot invalidation initially; dependency-aware note caching deferred.
 5. FastAPI server as the SvelteKit integration surface.
 6. Search via Polars in v1, no maplib FTS (commercial).
 7. boto3 + moto as the S3 driver and offline test harness (If-Match
@@ -426,17 +458,15 @@ dependency.
 
 ## 11. Increments
 
-- **0**: package skeleton, `ObjectStore` protocol + Local/Memory, config,
-  tests.
-- **1**: port context resolution, frontmatter parse, identity, wiki-link
-  resolution; differential tests against reference scripts + example vault.
-- **2**: triple DataFrame + N-Triples serializer + maplib Model + SPARQL
-  query + Turtle export.
-- **3**: ingest (foreign RDF -> vault notes, maplib `reads`), validation
-  report surface.
-- **4**: S3 store + sync CLI (pull/push/conflict) + change detection.
-- **5**: Git repository backend (dulwich): working-tree and bare modes, CAS
-  commits, conditional writes, `VersionedStore` extension + history
-  endpoints.
-- **6**: FastAPI server, API v1 endpoints, docs for the SvelteKit app.
-- **7**: incremental reindex, search polish, hardening review, README.
+The [implementation plan](../plan/202610020723_reference-first-tdd-implementation.md) supplies RED/GREEN steps, file scopes, dependencies, conformance tests, and exit criteria.
+
+- **0**: package/tooling baseline, ObjectStore contract, Local/Memory, configuration, and offline tests.
+- **1**: in-process reference `vault2rdf`, typed diagnostics, and bounded store snapshots.
+- **2**: in-process reference `rdf2vault`, conditional publication, preservation, and roundtrip fidelity.
+- **3**: canonical triple DataFrame, RDFLib SPARQL, structured graph/search operations, and renamed conversion CLI commands.
+- **4**: S3 store, Obsidian sync, conflicts, and change detection.
+- **5**: Git bare/working-tree storage, CAS commits, atomic ingest batches, and optional history.
+- **6**: FastAPI endpoints and SvelteKit integration documentation, gated on auth and query-safety decisions.
+- **7**: remaining regressions, performance characterization, hardening, examples, and release documentation.
+
+Maplib is a separate later increment, not a dependency of any step above.

@@ -18,6 +18,10 @@ repo = "https://github.com/anthropics/skills"
 path = "skills/skill-creator"
 ref = "main"
 
+[skills.test-driven-development]
+repo = "https://github.com/obra/superpowers"
+path = "skills/test-driven-development"
+
 [skills.webapp-testing]
 repo = "https://github.com/anthropics/skills"
 path = "skills/webapp-testing"

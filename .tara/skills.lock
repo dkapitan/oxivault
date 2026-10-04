@@ -23,6 +23,12 @@
     "ref": "main",
     "repo": "https://github.com/anthropics/skills"
   },
+  "test-driven-development": {
+    "commit": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+    "path": "skills/test-driven-development",
+    "ref": null,
+    "repo": "https://github.com/obra/superpowers"
+  },
   "webapp-testing": {
     "commit": "33375500bcea98d610eb30ce10ac4e59b89c390d",
     "path": "skills/webapp-testing",
