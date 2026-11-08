@@ -1,6 +1,6 @@
 [project]
 name = "oxivault"
-version = "0.2.1"
+version = "0.3.0"
 description = "Vault-LD knowledge graph store on object storage"
 readme = "README.md"
 authors = [
